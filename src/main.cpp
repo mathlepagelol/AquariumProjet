@@ -12,6 +12,7 @@ WiFiManager wm;
 #include <Adafruit_SPIDevice.h>
 #include <ArduinoJson.h>
 #include <DallasTemperature.h>
+#include <Time.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -30,8 +31,7 @@ const int LED = 2;        //La PIN GPIO de la LED
 const int oneWireBus = 4; //La pin GPIO de connexion
 const int Pompe = 26;     //La pin GPIO de connexion
 bool ok;                  //Flag de verif pour le range de température
-float timerFreq;          //Le timer qui mesure le temps restant avant le prochain cycle
-float timerDuree;         //Le timer qui mesure le temps du cycle de la pompe
+time_t now;
 
 // Initialisation d'une instance onewire
 OneWire oneWire(oneWireBus);
@@ -73,7 +73,7 @@ const char index_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           <h4>Cadence désirée</h4>
           <select style="width:100px;text-align-last:center;" name="cadenceFreq" onchange="this.form.submit();submitMessage();">
             <option selected="selected" disabled>%cadenceFreq%</option>
-            <option value="0.5">test</option>
+            <option value="1">1m</option>
             <option value="30">30m</option>
             <option value="60">1h</option>
             <option value="120">2h</option>
@@ -222,17 +222,17 @@ float getTempMax()
 }
 
 //Fonction qui permet d'aller chercher la fréquence de la pompe en minute
-float obtenirPompeFreq()
+int obtenirPompeFreq()
 {
-  float freq = readFile(SPIFFS, "/cadenceFreq.txt").toFloat();
-  return (freq * 60) / 3;
+  int freq = readFile(SPIFFS, "/cadenceFreq.txt").toInt();
+  return freq;
 }
 
 //Fonction qui permet d'aller chercher la durée de cycle de la pompe en minute
-float obtenirPompeDuree()
+int obtenirPompeDuree()
 {
-  float duree = readFile(SPIFFS, "/cadenceDuree.txt").toFloat();
-  return (duree * 60) / 3;
+  int duree = readFile(SPIFFS, "/cadenceDuree.txt").toInt();
+  return duree;
 }
 
 // Fonction qui permet d'aller chercher une température avec le senseur
@@ -299,32 +299,18 @@ void verifierTemperature()
 // Vérifie si la pompe est en opération/fermée
 void verifierEtatPompe()
 {
-  //IF la pompe est OFF => GO dans un waiting cycle THEN TURN ON IF le timer de la fréquence atteint ZÉRO
-  if (digitalRead(Pompe) == HIGH)
-  {
-    timerFreq--;
-    Serial.println(timerFreq);
-    Serial.println(timerDuree);
-    if (timerFreq == 0 && timerDuree != 0)
-    {
-      digitalWrite(Pompe, LOW);
-      timerFreq = obtenirPompeFreq();
-      timerDuree = obtenirPompeDuree();
-    }
-  }
-  //IF la pompe est ON => Surveille la durée restante et OFF lorsqu'on atteint ZÉRO
-  else if (digitalRead(Pompe) == LOW)
-  {
-    timerDuree--;
-    Serial.println(timerFreq);
-    Serial.println(timerDuree);
-    if (timerDuree == 0)
-    {
-      digitalWrite(Pompe, HIGH);
-      timerDuree = obtenirPompeDuree();
-      timerFreq = obtenirPompeFreq();
-    }
-  }
+  if (digitalRead(Pompe) == LOW){
+      if((time(&now) % (obtenirPompeDuree() * 60)) == 0)
+          {
+            digitalWrite(Pompe, HIGH);
+            delay(1000);
+          }}
+if (digitalRead(Pompe) == HIGH){
+       if((time(&now) % (obtenirPompeFreq() * 60)) == 0)
+          {
+            digitalWrite(Pompe, LOW);
+            delay(1000);
+          }}
 }
 
 // Permet de factory reset les paramètres de l'ESP32
@@ -368,9 +354,7 @@ void setup()
   //-------------------------------------------------------POMPE
   digitalWrite(Pompe, HIGH); //Pompe à OFF par défaut
   pinMode(Pompe, OUTPUT);
-  timerFreq = obtenirPompeFreq();   //Temps restant d'une cadence
-  timerDuree = obtenirPompeDuree(); //Temps restant d'une durée d'opération
-
+  
   //----------------------------------------------------WIFI
   if (!wm.autoConnect(ssid, password))
   {
@@ -592,5 +576,5 @@ void loop()
   afficherOLED();        // Fonction qui permet d'afficher les informations sur l'OLED
   verifierTemperature(); // LED => ON lorsque la température est entre la temp. min et la temp. max / Simule le heatpad
   verifierEtatPompe();   // Fonction qui surveille l'état de la pompe
-  delay(1000);           // Le code est exécuté à chaque 1s
+  delay(250);           // Le code est exécuté à chaque 1s
 }
