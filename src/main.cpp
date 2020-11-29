@@ -14,15 +14,13 @@ WiFiManager wm;
 #include <DallasTemperature.h>
 #include <Time.h>
 
+#pragma region DeclarationOLED
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
-// Declaration d'un array JSON
-String jsonresponse;
-StaticJsonDocument<200> doc;
+#pragma endregion DeclarationOLED
 
 const char *ssid = "ESP32AP";
 const char *password = "devkit1234"; //"EFC5F27D674F";
@@ -31,13 +29,20 @@ const int LED = 2;        //La PIN GPIO de la LED
 const int oneWireBus = 4; //La pin GPIO de connexion
 const int Pompe = 26;     //La pin GPIO de connexion
 bool ok;                  //Flag de verif pour le range de température
-time_t now;
+time_t now;               //Variable qui prend le temps actuel de l'ESP32 en secondes
 
+// Declaration d'un array JSON pour l'API
+String jsonresponse;
+StaticJsonDocument<200> doc;
+
+#pragma region InitialisationSonde
 // Initialisation d'une instance onewire
 OneWire oneWire(oneWireBus);
 // Passer la référence au sensor Dallas Temperature
 DallasTemperature sensors(&oneWire);
+#pragma endregion InitialisationSonde
 
+//Variables CONST qui pointent sur les inputs de l'interface web
 const char *PARAM_TEMPERATURE = "temperature";
 const char *PARAM_CADENCE_FREQ = "cadenceFreq";
 const char *PARAM_CADENCE_DUREE = "cadenceDuree";
@@ -69,7 +74,7 @@ const char index_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       <div>
         <form action="/get" target="hidden-form">
           <h4>Cadence actuelle</h4>
-          <span>À chaque : %cadenceFreq%h (%cadenceDuree% mins fixe)</span>
+          <span>À chaque : %cadenceFreq% mins (%cadenceDuree% mins fixe)</span>
           <h4>Cadence désirée</h4>
           <select style="width:100px;text-align-last:center;" name="cadenceFreq" onchange="this.form.submit();submitMessage();">
             <option selected="selected" disabled>%cadenceFreq%</option>
@@ -108,7 +113,7 @@ const char index_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             <option value="33">33°</option>
             <option value="34">34°</option>
           </select>
-          <p>Le pad chauffant commencera à chauffer WHEN (TempératureActuelle < (TempératureDésirée - 1.5°))</p>
+          <p>Le chauffe-eau démarrera uniquement quand la température actuelle sera inférieure à la température désirée moins 1.5°</p>
         </form>
       </div>
     </div>
@@ -150,6 +155,7 @@ function googleTranslateElementInit() {
 )rawliteral";
 #pragma endregion InterfaceWEB
 
+#pragma region MethodesSPIFFS
 void notFound(AsyncWebServerRequest *request)
 {
   request->send(404, "text/plain", "Not found");
@@ -213,7 +219,9 @@ String processor(const String &var)
   }
   return String();
 }
+#pragma endregion MethodesSPIFFS
 
+#pragma region FonctionsGlobales
 //Fonction qui permet d'aller toujours chercher la dernière Température Max à jour
 float getTempMax()
 {
@@ -321,6 +329,8 @@ if (digitalRead(Pompe) == HIGH){
 //   ESP.restart();
 //   delay(30000);
 // }
+#pragma endregion FonctionsGlobales
+
 
 void setup()
 {
@@ -353,7 +363,7 @@ void setup()
 
   //-------------------------------------------------------POMPE
   digitalWrite(Pompe, HIGH); //Pompe à OFF par défaut
-  pinMode(Pompe, OUTPUT);
+  pinMode(Pompe, OUTPUT); //Définition de la pompe en OUTPUT
   
   //----------------------------------------------------WIFI
   if (!wm.autoConnect(ssid, password))
@@ -411,7 +421,7 @@ void setup()
 
   //GET
   // Requête qui permet d'obtenir le nom de l'aquarium
-  server.on("/obtenirNomAquarium", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/api/obtenirNomAquarium", HTTP_GET, [](AsyncWebServerRequest *request) {
     jsonresponse = "";
     doc.clear();
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
@@ -428,7 +438,7 @@ void setup()
     }
   });
   // Requête qui permet d'obtenir la température à ne pas dépasser
-  server.on("/obtenirTemperatureMax", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/api/obtenirTemperatureMax", HTTP_GET, [](AsyncWebServerRequest *request) {
     jsonresponse = "";
     doc.clear();
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
@@ -446,7 +456,7 @@ void setup()
   });
 
   // Requête qui permet d'obtenir la température actuelle
-  server.on("/obtenirTemperatureActuelle", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/api/obtenirTemperatureActuelle", HTTP_GET, [](AsyncWebServerRequest *request) {
     jsonresponse = "";
     doc.clear();
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
@@ -464,7 +474,7 @@ void setup()
   });
 
   // Requête qui permet d'obtenir l'état de la pompe
-  server.on("/obtenirEtatPompe", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/api/obtenirEtatPompe", HTTP_GET, [](AsyncWebServerRequest *request) {
     jsonresponse = "";
     doc.clear();
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
@@ -488,7 +498,7 @@ void setup()
     }
   });
   // Requête qui permet d'obtenir l'état du chauffe-eau
-  server.on("/obtenirEtatChauffeEau", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/api/obtenirEtatChauffeEau", HTTP_GET, [](AsyncWebServerRequest *request) {
     jsonresponse = "";
     doc.clear();
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
@@ -519,7 +529,7 @@ void setup()
     if (request->authenticate(readFile(SPIFFS, "/username.txt").c_str(), readFile(SPIFFS, "/password.txt").c_str()))
     {
       //Requête qui permet de changer le nom de l'aquarium
-      if (request->url() == "/modifierNomAquarium" && request->method() == HTTP_POST)
+      if (request->url() == "/api/modifierNomAquarium" && request->method() == HTTP_POST)
       {
         deserializeJson(doc, (const char *)data);
         writeFile(SPIFFS, "/nom.txt", doc["nomAquarium"]);
@@ -528,7 +538,7 @@ void setup()
         request->send(200, "application/json", jsonresponse);
       }
       //Requête qui permet de changer le nom d'utilisateur pour l'authentification
-      if (request->url() == "/modifierUsername" && request->method() == HTTP_POST)
+      if (request->url() == "/api/modifierUsername" && request->method() == HTTP_POST)
       {
         deserializeJson(doc, (const char *)data);
         writeFile(SPIFFS, "/username.txt", doc["username"]);
@@ -537,7 +547,7 @@ void setup()
         request->send(200, "application/json", jsonresponse);
       }
       //Requête qui permet de changer le mot de passe pour l'authentification
-      if (request->url() == "/modifierPassword" && request->method() == HTTP_POST)
+      if (request->url() == "/api/modifierPassword" && request->method() == HTTP_POST)
       {
         deserializeJson(doc, (const char *)data);
         writeFile(SPIFFS, "/password.txt", doc["password"]);
@@ -546,7 +556,7 @@ void setup()
         request->send(200, "application/json", jsonresponse);
       }
       //Requête qui permet de changer la température max à atteindre
-      if (request->url() == "/modifierTemperatureMax" && request->method() == HTTP_POST)
+      if (request->url() == "/api/modifierTemperatureMax" && request->method() == HTTP_POST)
       {
         deserializeJson(doc, (const char *)data);
         writeFile(SPIFFS, "/temperature.txt", doc["temperatureMax"]);
@@ -576,5 +586,5 @@ void loop()
   afficherOLED();        // Fonction qui permet d'afficher les informations sur l'OLED
   verifierTemperature(); // LED => ON lorsque la température est entre la temp. min et la temp. max / Simule le heatpad
   verifierEtatPompe();   // Fonction qui surveille l'état de la pompe
-  delay(250);           // Le code est exécuté à chaque 1s
+  delay(250);          
 }
